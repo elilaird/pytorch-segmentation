@@ -8,6 +8,8 @@ import torch.utils.model_zoo as model_zoo
 from utils.helpers import initialize_weights
 from itertools import chain
 
+from models.resolution_layers import ResolutionWithConv
+
 ''' 
 -> ResNet BackBone
 '''
@@ -250,33 +252,33 @@ class Xception(nn.Module):
 -> The Atrous Spatial Pyramid Pooling
 '''
 
-def assp_branch(in_channels, out_channles, kernel_size, dilation):
+def assp_branch(in_channels, out_channles, kernel_size, dilation, use_resolution=False):
     padding = 0 if kernel_size == 1 else dilation
     return nn.Sequential(
-            nn.Conv2d(in_channels, out_channles, kernel_size, padding=padding, dilation=dilation, bias=False),
+            nn.Conv2d(in_channels, out_channles, kernel_size, padding=padding, dilation=dilation, bias=False) if not use_resolution else ResolutionWithConv(in_channels, out_channles, kernel_size, padding=padding, dilation=dilation),
             nn.BatchNorm2d(out_channles),
             nn.ReLU(inplace=True))
 
 class ASSP(nn.Module):
-    def __init__(self, in_channels, output_stride):
+    def __init__(self, in_channels, output_stride, use_resolution=False):
         super(ASSP, self).__init__()
 
         assert output_stride in [8, 16], 'Only output strides of 8 or 16 are suported'
         if output_stride == 16: dilations = [1, 6, 12, 18]
         elif output_stride == 8: dilations = [1, 12, 24, 36]
         
-        self.aspp1 = assp_branch(in_channels, 256, 1, dilation=dilations[0])
-        self.aspp2 = assp_branch(in_channels, 256, 3, dilation=dilations[1])
-        self.aspp3 = assp_branch(in_channels, 256, 3, dilation=dilations[2])
-        self.aspp4 = assp_branch(in_channels, 256, 3, dilation=dilations[3])
+        self.aspp1 = assp_branch(in_channels, 256, 1, dilation=dilations[0], use_resolution=use_resolution)
+        self.aspp2 = assp_branch(in_channels, 256, 3, dilation=dilations[1], use_resolution=use_resolution)
+        self.aspp3 = assp_branch(in_channels, 256, 3, dilation=dilations[2], use_resolution=use_resolution)
+        self.aspp4 = assp_branch(in_channels, 256, 3, dilation=dilations[3], use_resolution=use_resolution)
 
         self.avg_pool = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Conv2d(in_channels, 256, 1, bias=False),
+            nn.Conv2d(in_channels, 256, 1, bias=False) if not use_resolution else ResolutionWithConv(in_channels, 256, 1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True))
         
-        self.conv1 = nn.Conv2d(256*5, 256, 1, bias=False)
+        self.conv1 = nn.Conv2d(256*5, 256, 1, bias=False) if not use_resolution else ResolutionWithConv(256*5, 256, 1)
         self.bn1 = nn.BatchNorm2d(256)
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout(0.5)
@@ -301,22 +303,22 @@ class ASSP(nn.Module):
 '''
 
 class Decoder(nn.Module):
-    def __init__(self, low_level_channels, num_classes):
+    def __init__(self, low_level_channels, num_classes, use_resolution=False):
         super(Decoder, self).__init__()
-        self.conv1 = nn.Conv2d(low_level_channels, 48, 1, bias=False)
+        self.conv1 = nn.Conv2d(low_level_channels, 48, 1, bias=False) if not use_resolution else ResolutionWithConv(low_level_channels, 48, 1)
         self.bn1 = nn.BatchNorm2d(48)
         self.relu = nn.ReLU(inplace=True)
 
         # Table 2, best performance with two 3x3 convs
         self.output = nn.Sequential(
-            nn.Conv2d(48+256, 256, 3, stride=1, padding=1, bias=False),
+            nn.Conv2d(48+256, 256, 3, stride=1, padding=1, bias=False) if not use_resolution else ResolutionWithConv(48, 256, 3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, 3, stride=1, padding=1, bias=False),
+            nn.Conv2d(256, 256, 3, stride=1, padding=1, bias=False) if not use_resolution else ResolutionWithConv(256, 256, 3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(0.1),
-            nn.Conv2d(256, num_classes, 1, stride=1),
+            nn.Conv2d(256, num_classes, 1, stride=1) if not use_resolution else ResolutionWithConv(256, num_classes, 1, stride=1)
         )
         initialize_weights(self)
 
@@ -335,7 +337,7 @@ class Decoder(nn.Module):
 
 class DeepLab(BaseModel):
     def __init__(self, num_classes, in_channels=3, backbone='xception', pretrained=True, 
-                output_stride=16, freeze_bn=False, freeze_backbone=False, **_):
+                output_stride=16, freeze_bn=False, freeze_backbone=False, use_resolution=False, **_):
                 
         super(DeepLab, self).__init__()
         assert ('xception' or 'resnet' in backbone)
@@ -346,8 +348,8 @@ class DeepLab(BaseModel):
             self.backbone = Xception(output_stride=output_stride, pretrained=pretrained)
             low_level_channels = 128
 
-        self.ASSP = ASSP(in_channels=2048, output_stride=output_stride)
-        self.decoder = Decoder(low_level_channels, num_classes)
+        self.ASSP = ASSP(in_channels=2048, output_stride=output_stride, use_resolution=use_resolution)
+        self.decoder = Decoder(low_level_channels, num_classes, use_resolution=use_resolution)
 
         if freeze_bn: self.freeze_bn()
         if freeze_backbone: 
