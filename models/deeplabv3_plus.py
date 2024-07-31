@@ -7,12 +7,25 @@ from torchvision import models
 import torch.utils.model_zoo as model_zoo
 from utils.helpers import initialize_weights
 from itertools import chain
+import string
+import random
 
-from models.resolution_layers import ResolutionWithConv, DCTConcat2D
+from models.resolution_layers import (
+    ResolutionWithConv,
+    DCTConcat2D,
+    VariableDCTResizing,
+)
 
 """ 
 -> ResNet BackBone
 """
+
+
+def generate_random_string(n):
+    letters = (
+        string.ascii_letters
+    )  # This includes both lowercase and uppercase letters
+    return "".join(random.choice(letters) for i in range(n))
 
 
 class Conv2d(nn.Conv2d):
@@ -37,12 +50,13 @@ class Conv2d(nn.Conv2d):
             groups,
             bias,
         )
+        self.name = generate_random_string(10)
 
     def forward(self, x):
         out = super(Conv2d, self).forward(x)
         if not self.training:
             *_, H, W = out.shape
-            print(f"HxW for layer: {H}x{W}")
+            print(f"{self.name}: HxW: {H}x{W}")
         return out
 
 
@@ -405,6 +419,7 @@ class ASSP(nn.Module):
         self.use_resolution = use_resolution
 
         self.dct_concat = DCTConcat2D()
+        self.interp = VariableDCTResizing()
 
         self.aspp1 = assp_branch(
             in_channels,
@@ -458,12 +473,19 @@ class ASSP(nn.Module):
         x2 = self.aspp2(x)
         x3 = self.aspp3(x)
         x4 = self.aspp4(x)
-        x5 = F.interpolate(
-            self.avg_pool(x),
-            size=(x.size(2), x.size(3)),
-            mode="bilinear",
-            align_corners=True,
-        )
+
+        if self.use_resolution:
+            x5 = self.interp(
+                self.avg_pool(x), height=x.size(2), width=x.size(3)
+            )
+        else:
+            x5 = F.interpolate(
+                self.avg_pool(x),
+                size=(x.size(2), x.size(3)),
+                mode="bilinear",
+                align_corners=True,
+            )
+        
 
         if self.use_resolution:
             x = self.dct_concat(*[x1, x2, x3, x4, x5])

@@ -36,7 +36,7 @@
         "args": {
             "data_dir": "/data",
             "batch_size": 8,
-            "crop_size": 480,
+            "crop_size": 380,
             "val": true,
             "split": "val_aug",
             "num_workers": 4
@@ -61,7 +61,7 @@
     },
 
     "trainer": {
-        "epochs": 40,
+        "epochs": 80,
         "save_dir": "./saved/",
         "save_period": 10,
 
@@ -73,6 +73,6 @@
         "log_per_iter": 20,
 
         "val": true,
-        "val_per_epochs": 5
+        "val_per_epochs": 1
     }
 }
