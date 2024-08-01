@@ -27,7 +27,7 @@
             "rotate": true,
             "blur": false,
             "split": "train_aug",
-            "num_workers": 8
+            "num_workers": 2
         }
     },
 
@@ -39,7 +39,7 @@
             "crop_size": 380,
             "val": true,
             "split": "val_aug",
-            "num_workers": 4
+            "num_workers": 2
         }
     },
 
