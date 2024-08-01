@@ -542,9 +542,9 @@ class VariableDCTResizing(nn.Module):
             frequency_inputs,
             (
                 0,
-                max(height - current_width, 0),
+                max(width - current_width, 0),
                 0,
-                max(width - current_height, 0),
+                max(height - current_height, 0),
             ),
             "constant",
             0,

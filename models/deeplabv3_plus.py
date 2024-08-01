@@ -485,10 +485,14 @@ class ASSP(nn.Module):
                 mode="bilinear",
                 align_corners=True,
             )
-        
 
         if self.use_resolution:
-            x = self.dct_concat(*[x1, x2, x3, x4, x5])
+            try:
+                x = self.dct_concat(*[x1, x2, x3, x4, x5])
+            except:
+                print(
+                    f"Shapes: {x1.shape}, {x2.shape}, {x3.shape}, {x4.shape}, {x5.shape}"
+                )
         else:
             x = torch.cat((x1, x2, x3, x4, x5), dim=1)
 
